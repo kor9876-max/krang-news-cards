@@ -1,6 +1,6 @@
 """크랑이뉴스 릴스용 배경음악 자동 작곡 (저작권 없는 오리지널).
 
-날짜를 씨앗(seed)으로 써서 매일 다른 로파이(lo-fi) 곡을 만든다.
+날짜를 씨앗(seed)으로 써서 매일 다른, 잔잔하고 상쾌한 아침 곡을 만든다.
 같은 날짜로 다시 돌리면 같은 곡이 나온다.
 
     python3 gen_music.py <출력.wav> [--seed 2026-10-09] [--sec 24]
@@ -43,6 +43,22 @@ def epiano(freq, dur, vel=0.25):
     return vel * w * trem * env(n, 0.005, 0.4)
 
 
+def bell(freq, dur, vel=0.12):
+    n = int(dur * SR)
+    t = np.arange(n) / SR
+    w = (np.sin(2 * np.pi * freq * t) + 0.4 * np.sin(2 * np.pi * freq * 2.76 * t) * np.exp(-t * 6)
+         + 0.2 * np.sin(2 * np.pi * freq * 5.4 * t) * np.exp(-t * 10))
+    return vel * w * np.exp(-t * 3.5)
+
+
+def shaker(rng, vel=0.05):
+    n = int(0.09 * SR)
+    t = np.arange(n) / SR
+    b, a = butter(2, 5000 / (SR / 2), btype="high")
+    e = np.minimum(1, t / 0.02) * np.exp(-t * 35)
+    return vel * lfilter(b, a, rng.standard_normal(n)) * e
+
+
 def bass(freq, dur, vel=0.35):
     n = int(dur * SR)
     t = np.arange(n) / SR
@@ -82,10 +98,10 @@ def add(buf, sig, start):
 def compose(seed_text, sec=24.0):
     seed = int(hashlib.md5(seed_text.encode()).hexdigest()[:8], 16)
     rng = np.random.default_rng(seed)
-    key = int(rng.integers(55, 63))          # 근음 (G3 ~ D4 근처)
-    bpm = float(rng.integers(78, 96))
+    key = int(rng.integers(60, 67))          # 근음 (C4 ~ F#4) — 밝은 음역
+    bpm = float(rng.integers(86, 101))
     prog = PROGRESSIONS[int(rng.integers(len(PROGRESSIONS)))]
-    swing = float(rng.uniform(0.0, 0.12))
+    swing = float(rng.uniform(0.0, 0.06))
     beat = 60 / bpm
     bar = beat * 4
     n = int((sec + 2) * SR)
@@ -101,7 +117,7 @@ def compose(seed_text, sec=24.0):
 
     t = 0.0
     bi = 0
-    melody_density = float(rng.uniform(0.35, 0.6))
+    melody_density = float(rng.uniform(0.3, 0.45))
     while t < sec:
         deg = prog[bi % len(prog)]
         root, notes = chord(deg)
@@ -115,40 +131,43 @@ def compose(seed_text, sec=24.0):
             s = bass(midi_hz(root - 24), beat * 1.4)
             add(L, s, t + b_ * beat)
             add(R, s, t + b_ * beat)
-        # 드럼 (첫 마디는 조용히 시작)
+        # 드럼 — 가볍고 상쾌하게 (첫 마디는 조용히 시작)
         if bi > 0:
             for b_ in range(4):
                 bt = t + b_ * beat
-                if b_ in (0, 2) or (b_ == 3 and rng.random() < 0.3):
-                    k_ = kick(0.55)
+                if b_ == 0 or (b_ == 2 and rng.random() < 0.7):
+                    k_ = kick(0.38)
                     add(L, k_, bt)
                     add(R, k_, bt)
                 if b_ in (1, 3):
-                    s_ = snare(rng)
-                    add(L, s_ * 0.9, bt)
+                    s_ = snare(rng, 0.11)
+                    add(L, s_ * 0.8, bt)
                     add(R, s_, bt)
                 for h in (0, 0.5):
                     off = h * beat + (swing * beat if h else 0)
-                    hh = hat(rng)
-                    add(L, hh * 0.7, bt + off)
-                    add(R, hh, bt + off)
+                    sh = shaker(rng)
+                    add(L, sh, bt + off)
+                    add(R, sh * 0.7, bt + off)
         # 멜로디 (펜타토닉, 드문드문)
         if bi > 0:
             for step in range(8):
                 if rng.random() < melody_density:
                     m = key + 12 + PENTA[int(rng.integers(len(PENTA)))] + (12 if rng.random() < 0.2 else 0)
-                    s = epiano(midi_hz(m), beat * 0.9, 0.09)
                     st = t + step * beat / 2
+                    if rng.random() < 0.5:
+                        s = bell(midi_hz(m + 12), beat * 1.5, 0.07)
+                    else:
+                        s = epiano(midi_hz(m), beat * 0.9, 0.08)
                     add(L, s * 0.7, st)
                     add(R, s, st + 0.01)
         t += bar
         bi += 1
 
     mix = np.stack([L, R], axis=1)[: int(sec * SR)]
-    # 따뜻한 로파이 느낌: 고음 살짝 깎기 + 바이닐 잡음
-    b, a = butter(2, 6500 / (SR / 2), btype="low")
+    # 맑은 아침 느낌: 고음은 거의 살리고 잡음은 아주 약하게
+    b, a = butter(2, 11000 / (SR / 2), btype="low")
     mix = lfilter(b, a, mix, axis=0)
-    mix += rng.standard_normal(mix.shape) * 0.004
+    mix += rng.standard_normal(mix.shape) * 0.0012
     # 페이드 인/아웃
     fi, fo = int(0.8 * SR), int(2.0 * SR)
     mix[:fi] *= np.linspace(0, 1, fi)[:, None]
