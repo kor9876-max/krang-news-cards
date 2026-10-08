@@ -15,6 +15,7 @@ INK = (58, 42, 18)
 CHEEK = (240, 124, 90, 150)
 WHITE = (255, 255, 255)
 STRIPE = (92, 52, 18)
+PAD = (244, 150, 140)
 
 SS = 4  # 슈퍼샘플링 배율 (부드러운 외곽선)
 
@@ -30,18 +31,6 @@ def render_krangi(size=400, expr="basic"):
     cx, cy = S / 2, S * 0.62
     r = S * 0.36
     lw = max(2, int(S * 0.018))
-
-    # 팔
-    arm = int(S * 0.022)
-    if expr in ("happy", "surprised"):
-        d.line([(cx - r * 0.95, cy + r * 0.05), (cx - r * 1.3, cy - r * 0.55)], fill=GOLD_DARK, width=arm, joint="curve")
-        d.line([(cx + r * 0.95, cy + r * 0.05), (cx + r * 1.3, cy - r * 0.55)], fill=GOLD_DARK, width=arm, joint="curve")
-    elif expr == "worried":
-        d.line([(cx - r * 0.95, cy + r * 0.1), (cx - r * 0.55, cy + r * 0.55)], fill=GOLD_DARK, width=arm)
-        d.line([(cx + r * 0.95, cy + r * 0.1), (cx + r * 0.55, cy + r * 0.55)], fill=GOLD_DARK, width=arm)
-    else:
-        d.line([(cx - r * 0.95, cy + r * 0.1), (cx - r * 1.3, cy + r * 0.45)], fill=GOLD_DARK, width=arm)
-        d.line([(cx + r * 0.95, cy + r * 0.1), (cx + r * 1.3, cy - r * 0.45)], fill=GOLD_DARK, width=arm)
 
     # 꼬리 (몸 뒤, 오른쪽 아래에서 위로 말림)
     tail_w = int(S * 0.04)
@@ -137,6 +126,36 @@ def render_krangi(size=400, expr="basic"):
         d.chord([cx - r * 0.09, my + r * 0.04, cx + r * 0.09, my + r * 0.18], 0, 180, fill=(240, 110, 90))
     else:
         d.arc([cx - r * 0.15, my - r * 0.12, cx + r * 0.15, my + r * 0.12], 20, 160, fill=INK, width=int(lw * 1.3))
+
+    # 호랑이 앞발 (통통한 팔 + 젤리 발바닥)
+    pr = r * 0.2
+    aw = int(r * 0.26)
+    if expr in ("happy", "surprised"):
+        poses = [(-1, (-1.08, -0.4)), (1, (1.08, -0.4))]
+    elif expr == "worried":
+        poses = [(-1, (-0.5, 0.62)), (1, (0.5, 0.62))]
+    elif expr == "wink":
+        poses = [(-1, (-1.05, 0.48)), (1, (1.08, -0.42))]
+    else:
+        poses = [(-1, (-1.05, 0.48)), (1, (1.05, 0.48))]
+    for sx, (px, py) in poses:
+        sx0, sy0 = cx + sx * r * 0.88, cy + r * 0.2
+        hx, hy = cx + r * px, cy + r * py
+        d.line([(sx0, sy0), (hx, hy)], fill=GOLD_DARK, width=aw + lw * 2)
+        d.line([(sx0, sy0), (hx, hy)], fill=GOLD, width=aw)
+        d.ellipse([hx - pr, hy - pr, hx + pr, hy + pr], fill=GOLD, outline=GOLD_DARK, width=lw * 2)
+        # 발 줄무늬 한 줄
+        mx, my_ = (sx0 + hx) / 2, (sy0 + hy) / 2
+        vx, vy = hx - sx0, hy - sy0
+        n_ = math.hypot(vx, vy) or 1
+        nx, ny_ = -vy / n_, vx / n_
+        h = aw * 0.42
+        d.line([(mx - nx * h, my_ - ny_ * h), (mx + nx * h, my_ + ny_ * h)], fill=STRIPE, width=int(lw * 1.5))
+        # 젤리 발바닥
+        d.ellipse([hx - pr * 0.42, hy - pr * 0.05, hx + pr * 0.42, hy + pr * 0.5], fill=PAD)
+        for tx_ in (-0.5, 0, 0.5):
+            tx2, ty2 = hx + pr * tx_, hy - pr * (0.42 if tx_ == 0 else 0.3)
+            d.ellipse([tx2 - pr * 0.16, ty2 - pr * 0.16, tx2 + pr * 0.16, ty2 + pr * 0.16], fill=PAD)
 
     out = img.resize((size, int(size * 1.15)), Image.LANCZOS)
     return out
