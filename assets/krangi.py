@@ -1,4 +1,4 @@
-"""크랑이(동전 요정) 캐릭터 그리기 모듈.
+"""크랑이(호랑이 동전 요정) 캐릭터 그리기 모듈.
 
 카드뉴스·릴스 제작 시 import 해서 사용한다.
     from krangi import render_krangi
@@ -8,12 +8,13 @@
 import math
 from PIL import Image, ImageDraw
 
-GOLD = (246, 190, 52)
+GOLD = (247, 178, 44)
 GOLD_DARK = (190, 132, 22)
 GOLD_LINE = (217, 154, 34)
 INK = (58, 42, 18)
 CHEEK = (240, 124, 90, 150)
 WHITE = (255, 255, 255)
+STRIPE = (92, 52, 18)
 
 SS = 4  # 슈퍼샘플링 배율 (부드러운 외곽선)
 
@@ -42,13 +43,50 @@ def render_krangi(size=400, expr="basic"):
         d.line([(cx - r * 0.95, cy + r * 0.1), (cx - r * 1.3, cy + r * 0.45)], fill=GOLD_DARK, width=arm)
         d.line([(cx + r * 0.95, cy + r * 0.1), (cx + r * 1.3, cy - r * 0.45)], fill=GOLD_DARK, width=arm)
 
-    # 머리 위 반짝 뿔
-    tip = (cx, cy - r * 1.42)
-    d.polygon([(cx - r * 0.16, cy - r * 0.96), tip, (cx + r * 0.16, cy - r * 0.96)], fill=GOLD, outline=GOLD_DARK, width=lw)
-    d.ellipse([tip[0] - r * 0.07, tip[1] - r * 0.07, tip[0] + r * 0.07, tip[1] + r * 0.07], fill=WHITE)
+    # 꼬리 (몸 뒤, 오른쪽 아래에서 위로 말림)
+    tail_w = int(S * 0.04)
+    p0 = (cx + r * 0.75, cy + r * 0.62)
+    p1 = (cx + r * 1.28, cy + r * 0.78)
+    p2 = (cx + r * 1.16, cy + r * 0.0)
+    pts = []
+    for t in range(0, 41):
+        u = t / 40
+        pts.append(((1 - u) ** 2 * p0[0] + 2 * (1 - u) * u * p1[0] + u * u * p2[0],
+                    (1 - u) ** 2 * p0[1] + 2 * (1 - u) * u * p1[1] + u * u * p2[1]))
+    d.line(pts, fill=GOLD_DARK, width=tail_w + lw * 2, joint="curve")
+    d.line(pts, fill=GOLD, width=tail_w, joint="curve")
+    for k in (14, 23, 31):
+        (x1, y1), (x2, y2) = pts[k - 1], pts[k + 1]
+        tx, ty = x2 - x1, y2 - y1
+        n_ = math.hypot(tx, ty) or 1
+        nx, ny_ = -ty / n_, tx / n_
+        h = tail_w * 0.55
+        d.line([(pts[k][0] - nx * h, pts[k][1] - ny_ * h), (pts[k][0] + nx * h, pts[k][1] + ny_ * h)], fill=STRIPE, width=int(tail_w * 0.35))
+    ex_, ey_ = pts[-1]
+    d.ellipse([ex_ - tail_w * 0.55, ey_ - tail_w * 0.55, ex_ + tail_w * 0.55, ey_ + tail_w * 0.55], fill=STRIPE)
+
+    # 호랑이 귀
+    for sx in (-1, 1):
+        ax, ay = cx + sx * r * 0.62, cy - r * 0.78
+        er = r * 0.3
+        d.ellipse([ax - er, ay - er, ax + er, ay + er], fill=GOLD, outline=GOLD_DARK, width=lw * 2)
+        ir2 = er * 0.55
+        d.ellipse([ax - ir2, ay - ir2 + er * 0.1, ax + ir2, ay + ir2 + er * 0.1], fill=STRIPE)
+        d.ellipse([ax - ir2 * 0.55, ay - ir2 * 0.4 + er * 0.15, ax + ir2 * 0.55, ay + ir2 * 0.6 + er * 0.15], fill=(255, 240, 210))
 
     # 몸통(동전)
     d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=GOLD, outline=GOLD_DARK, width=lw * 2)
+
+    # 호랑이 줄무늬 (이마 3줄 + 양옆 2줄씩)
+    sw = int(lw * 1.8)
+    for dx, ln in ((-0.16, 0.16), (0, 0.22), (0.16, 0.16)):
+        x0 = cx + r * dx
+        d.line([(x0, cy - r * 0.97), (x0, cy - r * (0.97 - ln))], fill=STRIPE, width=sw)
+    for sx in (-1, 1):
+        for oy, ln in ((-0.18, 0.2), (0.12, 0.17)):
+            x0 = cx + sx * r * 0.99
+            y0 = cy + r * oy
+            d.line([(x0, y0), (x0 - sx * r * ln, y0 + r * 0.05)], fill=STRIPE, width=sw)
     ir = r * 0.8
     n = 36
     for i in range(n):
@@ -79,6 +117,15 @@ def render_krangi(size=400, expr="basic"):
         if expr == "worried":
             d.line([(ex - sx * r * 0.14, ey - r * 0.3), (ex + sx * r * 0.1, ey - r * 0.22)], fill=INK, width=lw)
 
+    # 코 + 수염 점
+    ny = cy + r * 0.1
+    d.polygon([(cx - r * 0.07, ny), (cx + r * 0.07, ny), (cx, ny + r * 0.07)], fill=STRIPE)
+    for sx in (-1, 1):
+        for k in range(3):
+            dx = cx + sx * r * (0.22 + 0.06 * (k % 2))
+            dy = ny + r * (0.06 + 0.05 * k)
+            d.ellipse([dx - r * 0.02, dy - r * 0.02, dx + r * 0.02, dy + r * 0.02], fill=STRIPE)
+
     # 입
     my = cy + r * 0.22
     if expr == "surprised":
@@ -106,7 +153,7 @@ if __name__ == "__main__":
     sd = ImageDraw.Draw(sheet)
     tf = ImageFont.truetype(font_path, 56, index=1)
     lf = ImageFont.truetype(font_path, 34, index=1)
-    sd.text((W / 2, 70), "크랑이 · 크랑이뉴스 동전 요정", font=tf, fill=INK, anchor="mm")
+    sd.text((W / 2, 70), "크랑이 · 크랑이뉴스 호랑이 동전 요정", font=tf, fill=INK, anchor="mm")
     cell = W / len(exprs)
     for i, (e, label) in enumerate(exprs):
         k = render_krangi(300, e)
