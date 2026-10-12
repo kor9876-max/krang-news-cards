@@ -3,8 +3,10 @@
 사용법:
     python3 make_reel.py <카드폴더> <출력.mp4>
 카드폴더 안의 01.png ~ 06.png 를 순서대로 사용한다.
---hook "질문/문구" 를 주면 ("/" 자리에서 줄바꿈) 맨 앞에 1.5초 질문 화면을 넣고 표지는 3초로 줄인다.
-표지 3.5초, 기사 카드 4.5초씩, 장 사이 0.5초 크로스페이드, 살짝 확대되는 움직임.
+--hook "질문/문구" 를 주면 ("/" 자리에서 줄바꿈) 맨 앞에 1.5초 질문 화면을 넣는다.
+기본: 표지 2초, 기사 카드 3.5초씩, 장 사이 0.5초 크로스페이드 → --hook 포함 약 18초.
+(2026-10-12 주간 리포트: 24초 릴스 평균 시청 13.7초 → 끝까지 보게 길이 단축)
+--cover-sec / --card-sec 로 길이를 바꿀 수 있다 (예전 길이: --cover-sec 3 --card-sec 4.5).
 배경음악은 넣지 않는다(무음). 저작권 걱정 없는 음원이 생기면 --music 옵션으로 추가.
 """
 import os
@@ -70,17 +72,17 @@ def hook_frame(question, expr="surprised"):
     return base
 
 
-def main(card_dir, out, music=None, hook=None):
+def main(card_dir, out, music=None, hook=None, cover_sec=2.0, card_sec=3.5):
     cards = [os.path.join(card_dir, f"{i:02d}.png") for i in range(1, 7)]
     cards = [c for c in cards if os.path.exists(c)]
     if len(cards) < 2:
         raise SystemExit("카드가 2장 이상 필요해요")
-    durs = [3.5] + [4.5] * (len(cards) - 1)
+    durs = [cover_sec] + [card_sec] * (len(cards) - 1)
     tmp = tempfile.mkdtemp()
     frames = [frame_for(c, i, len(cards)) for i, c in enumerate(cards)]
     if hook:
         frames.insert(0, hook_frame(hook))
-        durs = [1.5, 3.0] + durs[1:]
+        durs = [1.5] + durs
     inputs, filters = [], []
     for i, fr in enumerate(frames):
         p = os.path.join(tmp, f"f{i}.png")
@@ -116,6 +118,12 @@ def main(card_dir, out, music=None, hook=None):
 if __name__ == "__main__":
     args = sys.argv[1:]
     music = hook = None
+    secs = {}
+    for opt in ("--cover-sec", "--card-sec"):
+        if opt in args:
+            i = args.index(opt)
+            secs[opt[2:].replace("-", "_")] = float(args[i + 1])
+            del args[i:i + 2]
     if "--hook" in args:
         i = args.index("--hook")
         hook = args[i + 1]
@@ -124,4 +132,4 @@ if __name__ == "__main__":
         i = args.index("--music")
         music = args[i + 1]
         del args[i:i + 2]
-    main(args[0], args[1], music, hook)
+    main(args[0], args[1], music, hook, **secs)
