@@ -5,6 +5,11 @@
     article_card(1, "경제", "제목", "본문 두세 문장", "생활 영향 한 줄",
                  krangi_says="크랑이 한마디", expr="happy").save("02.png")
 expr: basic, happy, surprised, worried, wink
+
+art=그림 파일 경로(또는 PIL 이미지)를 넣으면 코드 크랑이 대신 아래쪽에
+가로 그림(힉스필드 생성, 16:9 권장)을 넣고 크랑이 한마디는 그림 위 말풍선으로 올린다.
+    article_card(..., krangi_says="...", art="art/02.png")
+    cover_card("11월 13일 (금)", [...], art="art/01.png")
 """
 import os
 import sys
@@ -80,6 +85,37 @@ def bubble(img, box, text, font, tail_to):
         yy += lh
 
 
+def _load_art(art):
+    if art is None:
+        return None
+    im = art if isinstance(art, Image.Image) else Image.open(art)
+    return im.convert("RGB")
+
+
+def paste_art(img, art, box, says=None):
+    """그림을 box(x0,y0,x1,y1)에 가운데 맞춰 채우고 둥근 모서리로 붙인 뒤 말풍선을 올린다."""
+    x0, y0, x1, y1 = box
+    bw, bh = x1 - x0, y1 - y0
+    a = art
+    sc = max(bw / a.width, bh / a.height)
+    a = a.resize((int(a.width * sc + 0.5), int(a.height * sc + 0.5)), Image.LANCZOS)
+    left, top = (a.width - bw) // 2, (a.height - bh) // 2
+    a = a.crop((left, top, left + bw, top + bh))
+    mask = Image.new("L", (bw, bh), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, bw - 1, bh - 1], radius=36, fill=255)
+    img.paste(a, (x0, y0), mask)
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle(box, radius=36, outline=INK, width=5)
+    if says:
+        bf = f(32)
+        maxw = int(bw * 0.42)
+        tw = min(int(d.textlength(says, font=bf)) + 80, maxw)
+        lines = wrap(d, says, bf, tw - 70)
+        th = int(bf.size * 1.4) * len(lines) + 48
+        bx0, by0 = x0 + 26, y0 + 26
+        bubble(img, (bx0, by0, bx0 + tw, by0 + th), says, bf, (bx0 + tw + 30, by0 + th + 45))
+
+
 def header(d, right_text):
     d.rectangle([0, 0, W, 110], fill=NAVY)
     d.text((60, 55), "크랑이뉴스", font=f(44), fill=GOLD, anchor="lm")
@@ -90,7 +126,15 @@ def footer(d):
     d.text((W // 2, H - 48), "출처: 한국경제 · @krang_news", font=f(26, False), fill=(150, 130, 100), anchor="mm")
 
 
-def cover_card(date_label, headlines, krangi_says="오늘 아침 주머니 사정, 크랑이가 챙겨왔어요!"):
+def _life_band(d, band_y, band_h, life_lines, lf):
+    d.rounded_rectangle([60, band_y, W - 60, band_y + band_h], radius=28, fill=LIFE_BG)
+    d.ellipse([95, band_y + 30, 133, band_y + 68], fill=GOLD, outline=GOLD_DARK, width=3)
+    d.text((114, band_y + 49), "!", font=f(28), fill=INK, anchor="mm")
+    d.text((148, band_y + 49), "내 생활엔?", font=f(32), fill=GOLD_DARK, anchor="lm")
+    draw_lines(d, life_lines, lf, 95, band_y + 76, INK, gap=1.4)
+
+
+def cover_card(date_label, headlines, krangi_says="오늘 아침 주머니 사정, 크랑이가 챙겨왔어요!", art=None):
     img = Image.new("RGB", (W, H), BG)
     d = ImageDraw.Draw(img)
     header(d, date_label)
@@ -106,6 +150,12 @@ def cover_card(date_label, headlines, krangi_says="오늘 아침 주머니 사�
         y2 = draw_lines(d, lines, nf, 140, y + 2, INK, gap=1.3)
         y = max(y + 80, y2 + 28)
 
+    art = _load_art(art)
+    if art is not None:
+        paste_art(img, art, (60, max(y + 20, 800), W - 60, H - 95), krangi_says)
+        footer(d)
+        return img
+
     k = render_krangi(330, "happy")
     kx, ky = W - k.width - 40, H - k.height - 80
     img.paste(k, (kx, ky), k)
@@ -114,7 +164,7 @@ def cover_card(date_label, headlines, krangi_says="오늘 아침 주머니 사�
     return img
 
 
-def article_card(idx, category, title, body, life, krangi_says=None, expr="basic"):
+def article_card(idx, category, title, body, life, krangi_says=None, expr="basic", art=None):
     img = Image.new("RGB", (W, H), BG)
     d = ImageDraw.Draw(img)
     header(d, f"{idx} / 5")
@@ -132,14 +182,17 @@ def article_card(idx, category, title, body, life, krangi_says=None, expr="basic
     lf = f(38)
     life_lines = wrap(d, life, lf, W - 200)[:2]
     band_h = 90 + len(life_lines) * 54
+    art = _load_art(art)
+    if art is not None:
+        band_y = y + 30
+        _life_band(d, band_y, band_h, life_lines, lf)
+        paste_art(img, art, (60, band_y + band_h + 35, W - 60, H - 95), krangi_says)
+        footer(d)
+        return img
     k = render_krangi(300, expr)
     band_y = H - 110 - k.height - band_h - 20
     band_y = max(band_y, y + 30)
-    d.rounded_rectangle([60, band_y, W - 60, band_y + band_h], radius=28, fill=LIFE_BG)
-    d.ellipse([95, band_y + 30, 133, band_y + 68], fill=GOLD, outline=GOLD_DARK, width=3)
-    d.text((114, band_y + 49), "!", font=f(28), fill=INK, anchor="mm")
-    d.text((148, band_y + 49), "내 생활엔?", font=f(32), fill=GOLD_DARK, anchor="lm")
-    draw_lines(d, life_lines, lf, 95, band_y + 76, INK, gap=1.4)
+    _life_band(d, band_y, band_h, life_lines, lf)
 
     # 크랑이 + 말풍선
     kx, ky = 50, H - k.height - 70
